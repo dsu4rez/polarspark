@@ -1,34 +1,43 @@
-from typing import List, Union, Any
+import sys
+from typing import List, Union, Any, Optional, Tuple
 
 class Window:
-    def __init__(self, partition_by=None, order_by=None):
+    unboundedPreceding: int = -sys.maxsize
+    unboundedFollowing: int = sys.maxsize
+    currentRow: int = 0
+
+    def __init__(self, partition_by=None, order_by=None, frame: Optional[Tuple[str, int, int]] = None):
         self._partition_by = partition_by or []
         self._order_by = order_by or []
+        self._frame = frame # (type, start, end)
+
+    @staticmethod
+    def partitionBy(*cols: Union[str, List[str]]) -> "Window":
+        w = Window()
+        return w.partitionBy(*cols)
+
+    @staticmethod
+    def orderBy(*cols: Union[str, List[str]]) -> "Window":
+        w = Window()
+        return w.orderBy(*cols)
 
     def partitionBy(self, *cols: Union[str, List[str]]) -> "Window":
-        if isinstance(self, Window):
-            target = self
-            actual_cols = cols
-        else:
-            target = Window()
-            actual_cols = [self] + list(cols)
-            
-        normalized = list(target._partition_by)
-        for c in actual_cols:
+        normalized = list(self._partition_by)
+        for c in cols:
             if isinstance(c, list): normalized.extend(c)
             else: normalized.append(c)
-        return Window(partition_by=normalized, order_by=target._order_by)
+        return Window(partition_by=normalized, order_by=self._order_by, frame=self._frame)
 
     def orderBy(self, *cols: Union[str, List[str]]) -> "Window":
-        if isinstance(self, Window):
-            target = self
-            actual_cols = cols
-        else:
-            target = Window()
-            actual_cols = [self] + list(cols)
-            
-        normalized = list(target._order_by)
-        for c in actual_cols:
+        normalized = list(self._order_by)
+        for c in cols:
             if isinstance(c, list): normalized.extend(c)
             else: normalized.append(c)
-        return Window(partition_by=target._partition_by, order_by=normalized)
+        return Window(partition_by=self._partition_by, order_by=normalized, frame=self._frame)
+
+    def rowsBetween(self, start: int, end: int) -> "Window":
+        return Window(partition_by=self._partition_by, order_by=self._order_by, frame=("rows", start, end))
+
+    def rangeBetween(self, start: int, end: int) -> "Window":
+        return Window(partition_by=self._partition_by, order_by=self._order_by, frame=("range", start, end))
+

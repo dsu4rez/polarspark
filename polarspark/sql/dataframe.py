@@ -296,6 +296,12 @@ class DataFrame:
         new_df._alias = name
         return new_df
 
+    @property
+    def write(self) -> "DataFrameWriter":
+        from .readwriter import DataFrameWriter
+        return DataFrameWriter(self)
+
+
 class GroupedData:
 
     def __init__(self, pl_groupby):

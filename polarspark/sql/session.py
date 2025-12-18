@@ -1,6 +1,7 @@
 import polars as pl
 from .dataframe import DataFrame
 from typing import List, Any, Optional
+from .readwriter import DataFrameReader
 
 class SparkSession:
     class Builder:
@@ -28,15 +29,6 @@ class SparkSession:
         return DataFrame(df)
 
     @property
-    def read(self) -> "DataFrameReader":
+    def read(self) -> DataFrameReader:
         return DataFrameReader()
 
-class DataFrameReader:
-    def csv(self, path: str, header: bool = False, inferSchema: bool = False) -> DataFrame:
-        return DataFrame(pl.read_csv(path, has_header=header, try_parse_dates=inferSchema))
-
-    def parquet(self, path: str) -> DataFrame:
-        return DataFrame(pl.read_parquet(path))
-
-    def json(self, path: str) -> DataFrame:
-        return DataFrame(pl.read_json(path))

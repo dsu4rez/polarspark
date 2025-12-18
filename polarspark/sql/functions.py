@@ -2,8 +2,57 @@ from typing import Any, Union, Optional
 from datetime import datetime
 import polars as pl
 from .column import Column
+from .types import StringType, IntegerType, LongType, FloatType, DoubleType, BooleanType
+
+class UserDefinedFunction:
+    def __init__(self, func, returnType):
+        self.func = func
+        self.returnType = returnType
+
+    def __call__(self, *cols) -> Column:
+        pl_type = self._spark_type_to_polars(self.returnType)
+        
+        if len(cols) == 1:
+            expr = cols[0]._expr if isinstance(cols[0], Column) else pl.col(cols[0])
+            return Column(expr.map_elements(self.func, return_dtype=pl_type, skip_nulls=False))
+        else:
+            # Multi-column UDF: use struct to pass multiple values as a dict
+            col_exprs = []
+            for c in cols:
+                if isinstance(c, Column): col_exprs.append(c._expr)
+                else: col_exprs.append(pl.col(c))
+            
+            struct_expr = pl.struct(col_exprs)
+            
+            def wrapper(val_dict):
+                if val_dict is None: 
+                    # Try to call func with None for each arg
+                    try: return self.func(*([None] * len(cols)))
+                    except: return None
+                return self.func(*val_dict.values())
+            
+            return Column(struct_expr.map_elements(wrapper, return_dtype=pl_type, skip_nulls=False))
+
+
+    def _spark_type_to_polars(self, spark_type):
+        s = str(spark_type)
+        if "StringType" in s: return pl.Utf8
+        if "IntegerType" in s: return pl.Int64
+        if "LongType" in s: return pl.Int64
+        if "FloatType" in s: return pl.Float32
+        if "DoubleType" in s: return pl.Float64
+        if "BooleanType" in s: return pl.Boolean
+        return None
+
+def udf(f=None, returnType=None):
+    if f is None or not callable(f):
+        # Decorator: @udf(returnType=StringType())
+        return lambda func: UserDefinedFunction(func, f or returnType)
+    # Function: udf(lambda x: x, StringType())
+    return UserDefinedFunction(f, returnType)
 
 # Encryption & Hashing
+
 def md5(col_name: Union[str, Column]) -> Column:
     import hashlib
     expr = col_name._expr if isinstance(col_name, Column) else pl.col(col_name)
@@ -607,28 +656,42 @@ class WhenClause:
         return Column(expr)
 
 def count(col_name: Union[str, Column]) -> Column:
-    expr = col_name._expr if isinstance(col_name, Column) else pl.col(col_name)
-    return Column(expr.count())
+    base_expr = col_name._expr if isinstance(col_name, Column) else pl.col(col_name)
+    c = Column(base_expr.count())
+    c._is_agg, c._agg_op, c._base_expr = True, "count", base_expr
+    return c
 
 def sum(col_name: Union[str, Column]) -> Column:
-    expr = col_name._expr if isinstance(col_name, Column) else pl.col(col_name)
-    return Column(expr.sum())
+    base_expr = col_name._expr if isinstance(col_name, Column) else pl.col(col_name)
+    c = Column(base_expr.sum())
+    c._is_agg, c._agg_op, c._base_expr = True, "sum", base_expr
+    return c
 
 def avg(col_name: Union[str, Column]) -> Column:
-    expr = col_name._expr if isinstance(col_name, Column) else pl.col(col_name)
-    return Column(expr.mean())
+    base_expr = col_name._expr if isinstance(col_name, Column) else pl.col(col_name)
+    c = Column(base_expr.mean())
+    c._is_agg, c._agg_op, c._base_expr = True, "mean", base_expr
+    return c
 
 def min(col_name: Union[str, Column]) -> Column:
-    expr = col_name._expr if isinstance(col_name, Column) else pl.col(col_name)
-    return Column(expr.min())
+    base_expr = col_name._expr if isinstance(col_name, Column) else pl.col(col_name)
+    c = Column(base_expr.min())
+    c._is_agg, c._agg_op, c._base_expr = True, "min", base_expr
+    return c
 
 def max(col_name: Union[str, Column]) -> Column:
-    expr = col_name._expr if isinstance(col_name, Column) else pl.col(col_name)
-    return Column(expr.max())
+    base_expr = col_name._expr if isinstance(col_name, Column) else pl.col(col_name)
+    c = Column(base_expr.max())
+    c._is_agg, c._agg_op, c._base_expr = True, "max", base_expr
+    return c
 
 def countDistinct(col_name: Union[str, Column]) -> Column:
-    expr = col_name._expr if isinstance(col_name, Column) else pl.col(col_name)
-    return Column(expr.n_unique())
+    base_expr = col_name._expr if isinstance(col_name, Column) else pl.col(col_name)
+    c = Column(base_expr.n_unique())
+    c._is_agg, c._agg_op, c._base_expr = True, "n_unique", base_expr
+    return c
+
+
 
 def first(col_name: Union[str, Column]) -> Column:
     expr = col_name._expr if isinstance(col_name, Column) else pl.col(col_name)
