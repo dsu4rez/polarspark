@@ -5,13 +5,32 @@ from .column import Column
 class DataFrame:
     def __init__(self, df: pl.DataFrame):
         self._df = df
+        self._alias = None
+        self._left_ref = None
+        self._right_ref = None
+        self._left_alias = None
+        self._right_alias = None
+        self._left_cols = None
+        self._right_cols = None
+
+
+
 
     def __getitem__(self, item: str) -> Column:
         if isinstance(item, str):
+            # Check for alias prefix in string selection
+            if self._alias and item.startswith(f"{self._alias}."):
+                item = item[len(self._alias)+1:]
+            
             c = Column(pl.col(item))
+            c._is_simple_col = True
+            c._col_name = item
             # Store a reference to the df to help with ambiguous joins
             c._df_ref = id(self)
+            c._table_name = self._alias
             return c
+
+
         raise ValueError(f"Unsupported item type: {type(item)}")
 
     def __getattr__(self, name: str) -> Column:
@@ -29,21 +48,32 @@ class DataFrame:
                 normalized_cols.append(c)
         
         exprs = []
-        generator_cols = []
+        cols_in_df = self.columns
         for c in normalized_cols:
             if isinstance(c, str):
-                exprs.append(pl.col(c))
-            elif isinstance(c, Column):
-                exprs.append(c._expr)
-                if hasattr(c, "_is_generator") and c._is_generator:
-                    # In Polars, we'll need to unnest this column later.
-                    # We can't easily know the output name here if it's not aliased.
-                    # But we can try to guess it.
-                    pass
+                from .functions import col
+                # Use col() to handle dot parsing (table.col.field)
+                c = col(c)
+
+
+            if isinstance(c, Column):
+                # Resolve using context (id, alias, columns)
+                # If not a join result, left_cols is simply current columns
+                exprs.append(c._resolve(
+                    self._left_ref, self._right_ref, 
+                    self._left_alias, self._right_alias,
+                    self._left_cols or self.columns, 
+                    self._right_cols
+                ))
+
+
+
+
             else:
                 raise ValueError(f"Unsupported column type: {type(c)}")
         
         df = self._df.select(exprs)
+
         
         # If any was a generator, we might need to unnest.
         # This is a bit hacky. Let's look for struct columns and unnest them if they look like they came from generators.
@@ -118,37 +148,116 @@ class DataFrame:
         # Normalize join type literals
         h = how.lower().replace("_", "")
         how_map = {
-            "inner": "inner",
-            "left": "left",
-            "leftouter": "left",
-            "right": "right",
-            "rightouter": "right",
-            "full": "full",
-            "outer": "full",
-            "fullouter": "full",
-            "semi": "semi",
-            "leftsemi": "semi",
-            "anti": "anti",
-            "leftanti": "anti",
-            "cross": "cross"
+            "inner": "inner", "left": "left", "leftouter": "left", "right": "right", "rightouter": "right",
+            "full": "full", "outer": "full", "fullouter": "full", "semi": "semi", "leftsemi": "semi",
+            "anti": "anti", "leftanti": "anti", "cross": "cross"
         }
         pl_how = how_map.get(h, "inner")
 
-        
         if isinstance(on, Column):
+            # Equi-join detection for performance and compatibility
+            if getattr(on, "_is_equi_join_cond", False):
+                l_match = (on._l_ref == id(self) or (self._alias and on._l_table == self._alias))
+                r_match = (on._r_ref == id(other) or (other._alias and on._r_table == other._alias))
+                
+                if l_match and r_match:
+                    if on._l_col == on._r_col:
+                        res_df = self._df.join(other._df, left_on=on._l_col, right_on=on._r_col, how=pl_how)
+                    else:
+                        return self.join(other, on=[on._l_col, on._r_col], how=how)
+                    res = DataFrame(res_df)
+                    res._left_ref, res._right_ref = id(self), id(other)
+                    res._left_alias, res._right_alias = self._alias, other._alias
+                    res._left_cols, res._right_cols = self.columns, other.columns
+                    return res
+
+                
+                # Check reversed
+                l_match_rev = (on._l_ref == id(other) or (other._alias and on._l_table == other._alias))
+                r_match_rev = (on._r_ref == id(self) or (self._alias and on._r_table == self._alias))
+                if l_match_rev and r_match_rev:
+                    if on._l_col == on._r_col:
+                        res_df = self._df.join(other._df, left_on=on._r_col, right_on=on._l_col, how=pl_how)
+                    else:
+                        return self.join(other, on=[on._r_col, on._l_col], how=how)
+                    res = DataFrame(res_df)
+                    res._left_ref, res._right_ref = id(self), id(other)
+                    res._left_alias, res._right_alias = self._alias, other._alias
+                    res._left_cols, res._right_cols = self.columns, other.columns
+                    return res
+
+
+            # Non-equus: resolve predicates (apply _right suffixes where needed)
+            resolved_expr = on._resolve(id(self), id(other), self._alias, other._alias, self.columns, other.columns)
+
+
             if pl_how == "inner":
-                return DataFrame(self._df.join_where(other._df, on._expr))
-            else:
-                raise NotImplementedError(f"Join on Column expressions with '{how}' join is not yet supported. Only 'inner' is supported for expressions.")
-        
+                res = DataFrame(self._df.join_where(other._df, resolved_expr))
+                res._left_ref, res._right_ref = id(self), id(other)
+                res._left_alias, res._right_alias = self._alias, other._alias
+                res._left_cols, res._right_cols = self.columns, other.columns
+                return res
+
+            
+            # Non-equi fallback for other types
+            left_id = "_left_idx"
+            right_id = "_right_idx"
+            df_left = self._df.with_row_index(left_id)
+            df_right = other._df.with_row_index(right_id)
+            matches = df_left.join_where(df_right, resolved_expr)
+            matched_l = matches.get_column(left_id).unique()
+            
+            res_df = None
+            if pl_how == "semi":
+                res_df = df_left.filter(pl.col(left_id).is_in(matched_l)).drop(left_id)
+            elif pl_how == "anti":
+                res_df = df_left.filter(~pl.col(left_id).is_in(matched_l)).drop(left_id)
+            elif pl_how == "left":
+                unmatched = df_left.filter(~pl.col(left_id).is_in(matched_l))
+                res_df = pl.concat([matches, unmatched], how="diagonal").drop([left_id, right_id])
+            elif pl_how == "right":
+                matched_r = matches.get_column(right_id).unique()
+                unmatched = df_right.filter(~pl.col(right_id).is_in(matched_r))
+                res_df = pl.concat([matches, unmatched], how="diagonal").drop([left_id, right_id])
+            elif pl_how == "full":
+                matched_r = matches.get_column(right_id).unique()
+                unmatched_l = df_left.filter(~pl.col(left_id).is_in(matched_l))
+                unmatched_r = df_right.filter(~pl.col(right_id).is_in(matched_r))
+                res_df = pl.concat([matches, unmatched_l, unmatched_r], how="diagonal").drop([left_id, right_id])
+
+            if res_df is not None:
+                res = DataFrame(res_df)
+                res._left_ref, res._right_ref = id(self), id(other)
+                res._left_alias, res._right_alias = self._alias, other._alias
+                res._left_cols, res._right_cols = self.columns, other.columns
+                return res
+
+
+            raise NotImplementedError(f"Join on Column expressions with '{how}' join is not yet supported.")
+
         # Resolve Column references in list
         if isinstance(on, list):
-            on = [c._expr if isinstance(c, Column) else c for c in on]
-            # If they are just pl.col("name"), and coalesce=False is needed?
-            # Spark joins on list of names usually coalesces.
-            # Polars join(on=["a"]) also coalesces.
+            exprs = []
+            for c in on:
+                if isinstance(c, Column):
+                    if c._is_simple_col and (c._df_ref == id(other) or (other._alias and c._table_name == other._alias)):
+                        exprs.append(pl.col(c._col_name + "_right"))
+                    else:
+                        exprs.append(c._expr)
+                else:
+                    exprs.append(c)
+            on = exprs
             
-        return DataFrame(self._df.join(other._df, on=on, how=pl_how))
+        res_df = self._df.join(other._df, on=on, how=pl_how)
+        res = DataFrame(res_df)
+        res._left_ref, res._right_ref = id(self), id(other)
+        res._left_alias, res._right_alias = self._alias, other._alias
+        res._left_cols, res._right_cols = self.columns, other.columns
+        return res
+
+
+
+
 
 
 
@@ -182,7 +291,13 @@ class DataFrame:
     def toPandas(self):
         return self._df.to_pandas()
 
+    def alias(self, name: str) -> "DataFrame":
+        new_df = DataFrame(self._df)
+        new_df._alias = name
+        return new_df
+
 class GroupedData:
+
     def __init__(self, pl_groupby):
         self._gb = pl_groupby
 

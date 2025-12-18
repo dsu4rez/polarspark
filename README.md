@@ -12,8 +12,11 @@
     - **Collections**: `array_union`, `arrays_zip`, `posexplode`, `map_from_arrays`.
     - **Higher-Order Functions**: `transform`, `filter`, `exists`, `aggregate`, `zip_with`.
     - **Aggregates & Math**: `approx_count_distinct`, `corr`, `skewness`, `hypot`, `pow`.
-- **Advanced Joins**: Support for `inner`, `left`, `right`, `full`, `semi`, `anti`, and `cross` joins, including expression-based join conditions.
-- **Window Functions**: Robust support for `partitionBy`, `orderBy`, and ranking functions like `rank()`, `dense_rank()`, `ntile()`.
+- **Advanced Joins**: Support for all join types (`inner`, `left`, `right`, `full`, `semi`, `anti`, `cross`). Includes full support for expression-based join conditions (e.g., `df1.id == df2.id`), self-joins, and non-equi joins.
+- **Ambiguity & Aliasing**: Smart `DataFrame.alias()` support and automatic column resolution for joined results, including disambiguation between table aliases and nested struct fields.
+- **Window Functions**: Robust support for `partitionBy`, `orderBy`, and ranking functions like `rank()`, `dense_rank()`, `ntile()`, and framing.
+- **Struct & Deep Nesting**: Full support for struct field access via `getField`, dot-notation (`df.user.id`), and recursive resolution in join conditions.
+
 
 ## 🚀 Quick Start
 
@@ -37,6 +40,17 @@ result = df.withColumn("is_senior", F.col("age") >= 30) \
            .select("upper_name", "is_senior", F.size("tags").alias("tag_count"))
 
 result.show()
+
+# Complex Joins & Aliases Example
+t1 = df.alias("t1")
+t2 = df.alias("t2")
+# Self-join to find pairs, disambiguating 't1.id' and 't2.id' automatically
+pairs = t1.join(t2, t1.id < t2.id).select(
+    F.col("t1.name").alias("user1"),
+    F.col("t2.name").alias("user2")
+)
+pairs.show()
+
 ```
 
 ## 🧪 Testing
@@ -62,10 +76,10 @@ pytest tests/
 ## ⚠️ Current Status & Limitations
 
 PolarSpark is an active project aiming for maximum PySpark API coverage. 
-- **Inner Joins**: Expression-based joins (`df1.id == df2.id + 1`) are fully supported for inner joins.
-- **Non-Inner Joins**: Join expressions for left/right/full joins are currently being refined.
+- **Expression Joins**: All standard Sparks join types are fully supported with complex expressions.
 - **UDFs**: Basic Python UDF support is planned.
 - **IO**: Currently supports direct creation from Python objects; Parquet/CSV readers are under development.
+
 
 ---
 Built by [dsu4rez] as a high-performance bridge between Spark and Polars.

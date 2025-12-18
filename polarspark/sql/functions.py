@@ -291,13 +291,34 @@ def nanvl(col1: Union[str, Column], col2: Union[str, Column]) -> Column:
     expr2 = col2._expr if isinstance(col2, Column) else pl.col(col2)
     return Column(pl.when(expr1.is_nan()).then(expr2).otherwise(expr1))
 
-def col(name: str) -> Column:
+def col(col_name: str) -> Column:
+    # Handle Spark-style df.col or table.col.field by parsing dots
+    table_name = None
+    if isinstance(col_name, str) and "." in col_name:
+        parts = col_name.split(".")
+        table_name = parts[0]
+        # The base column is the second part
+        base_col_name = parts[1]
+        c = Column(pl.col(base_col_name))
+        c._is_simple_col = True
+        c._col_name = base_col_name
+        c._table_name = table_name
+        
+        # Any subsequent parts are struct fields
+        for field in parts[2:]:
+            c = c.getField(field)
+        return c
+    
+    c = Column(pl.col(col_name))
+    c._is_simple_col = True
+    c._col_name = col_name
+    return c
 
 
-    return Column(pl.col(name))
 
 def lit(value: Any) -> Column:
     return Column(pl.lit(value))
+
 
 # Null handling
 def isnull(col_name: Union[str, Column]) -> Column:
