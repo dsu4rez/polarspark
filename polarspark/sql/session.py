@@ -3,6 +3,7 @@ from .dataframe import DataFrame
 from typing import List, Any, Optional
 from .readwriter import DataFrameReader
 
+
 class SparkSession:
     class Builder:
         def __init__(self):
@@ -31,4 +32,3 @@ class SparkSession:
     @property
     def read(self) -> DataFrameReader:
         return DataFrameReader()
-

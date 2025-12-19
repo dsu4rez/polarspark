@@ -25,7 +25,7 @@ WORKDIR /workspace
 
 # Upgrade pip and install Python packages used during development
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
-RUN pip install --no-cache-dir polars pandas pyspark pytest
+RUN pip install --no-cache-dir polars pandas pyspark pytest ruff
 
 # Create a non-root user for safer development
 RUN useradd --create-home devuser && chown -R devuser:devuser /workspace

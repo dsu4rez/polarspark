@@ -11,3 +11,8 @@ tasks:
     desc: Stop and remove the development container and anonymous volumes
     cmds:
       - docker-compose down -v
+
+  format:
+    desc: Format code using ruff (run inside workspace container)
+    cmd: ruff format
+  
