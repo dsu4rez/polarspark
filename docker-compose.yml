@@ -1,0 +1,16 @@
+services:
+  workspace:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: polarspark-dev:latest
+    container_name: polarspark-dev
+    volumes:
+      - ./:/workspace
+      - "${HOME}/.gitconfig:/home/devuser/.gitconfig"
+      - "${HOME}/.ssh:/home/devuser/.ssh"
+    working_dir: /workspace
+    tty: true
+    stdin_open: true
+    # Run an idle command by default; Taskfile will manage start/stop
+    command: tail -f /dev/null

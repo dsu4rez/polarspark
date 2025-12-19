@@ -1,0 +1,13 @@
+version: '3'
+
+tasks:
+  workspace-start:
+    desc: Build image and start the development container (detached)
+    cmds:
+      - docker-compose build
+      - docker-compose up -d
+
+  workspace-stop:
+    desc: Stop and remove the development container and anonymous volumes
+    cmds:
+      - docker-compose down -v

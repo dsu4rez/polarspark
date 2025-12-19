@@ -1,5 +1,5 @@
 import polars as pl
-from typing import Union, Any, TYPE_CHECKING, Optional
+from typing import Union, Any, TYPE_CHECKING, Optional, List
 
 if TYPE_CHECKING:
     from .window import Window

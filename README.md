@@ -2,6 +2,39 @@
 
 **PolarSpark** is a high-performance, PySpark-compatible API wrapper built on top of the [Polars](https://github.com/pola-rs/polars) DataFrame library. It allows you to write Spark-style code while enjoying the lightning-fast execution speeds and low memory footprint of Polars.
 
+## 🛠️ Development Environment
+
+This project is designed for rapid development using Docker and [Taskfile](https://taskfile.dev/). The recommended workflow is to use VSCode's **Dev Containers** feature for a seamless experience.
+
+### 1. Start the Development Container
+
+Use [Taskfile](https://taskfile.dev/) to build and start the workspace container:
+
+```bash
+task workspace-start
+```
+
+This will build the Docker image and start the container in detached mode using `docker-compose`.
+
+### 2. Attach VSCode to the Container
+
+1. Open VSCode.
+2. Use the **Remote - Containers** extension (or **Dev Containers** in newer VSCode versions).
+3. Select **Attach to Running Container...** and choose `polarspark-dev`.
+4. Set `/workspace` as your VSCode workspace folder (this is the project root inside the container).
+
+> **Tip:** The container mounts your project at `/workspace` and sets it as the working directory. All development, testing, and notebooks should be run from this path.
+
+### 3. Stopping the Container
+
+To stop and remove the development container:
+
+```bash
+task workspace-stop
+```
+
+---
+
 ## ✨ Key Features
 
 - **Familiar API**: Mirroring the `pyspark.sql` structure (`SparkSession`, `DataFrame`, `functions`, `Column`, `Window`).
@@ -73,13 +106,14 @@ pytest tests/
     - `window.py`: Window specification and framing.
 - `tests/`: Extensive unit test suite.
 
+- `notebooks/demo.ipynb`: Example Jupyter notebook demonstrating usage. Open this in VSCode or Jupyter to explore PolarSpark interactively.
+
 ## ⚠️ Current Status & Limitations
 
 PolarSpark is an active project aiming for maximum PySpark API coverage. 
-- **Expression Joins**: All standard Sparks join types are fully supported with complex expressions.
-- **UDFs**: Basic Python UDF support is planned.
+- **UDFs**: Basic Python UDF support only.
 - **IO**: Currently supports direct creation from Python objects; Parquet/CSV readers are under development.
 
 
 ---
-Built by [dsu4rez] as a high-performance bridge between Spark and Polars.
+Vibe-coded by [dsu4rez] as a high-performance bridge between Spark and Polars.
