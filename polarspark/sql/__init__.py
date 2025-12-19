@@ -1,3 +1,4 @@
+from .dataframe import DataFrame
 from .session import SparkSession
 from .window import Window
 from .types import (
